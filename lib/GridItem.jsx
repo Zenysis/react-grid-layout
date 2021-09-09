@@ -325,6 +325,14 @@ export default class GridItem extends React.Component<Props, State> {
       }
     }
 
+    // Need to disable the transition when resizing from the left because the
+    // top/left position of the tile will change. This position is what triggers
+    // an animation, and it is undesirable during resizing. When resizing from
+    // the bottom or right, this transition is never triggered because the top
+    // left position is not modified.
+    if (this.state.resizingLeft) {
+      style.transition = 'none';
+    }
     return style;
   }
 
@@ -369,6 +377,7 @@ export default class GridItem extends React.Component<Props, State> {
   ): ReactElement<any> {
     const {
       cols,
+      w,
       x,
       minW,
       minH,
@@ -380,8 +389,13 @@ export default class GridItem extends React.Component<Props, State> {
     } = this.props;
     const positionParams = this.getPositionParams();
 
-    // This is the max possible width - doesn't go to infinity because of the width of the window
-    const maxWidth = calcGridItemPosition(positionParams, 0, 0, cols - x, 0)
+    // This is the max possible width within the bounds of the grid layout. It
+    // is the distance from the left edge of the item to the right edge of the
+    // layout when the user is dragging from the right side of the grid item,
+    // and it is the distance from the right edge of the item to the left edge
+    // of the layout when the user is dragging from the left side.
+    const distanceToEdge = this.state.resizingLeft ? x + w : cols - x;
+    const maxWidth = calcGridItemPosition(positionParams, 0, 0, distanceToEdge, 0)
       .width;
 
     // Calculate min/max constraints using our min & maxes
@@ -577,7 +591,7 @@ export default class GridItem extends React.Component<Props, State> {
    */
   onResizeHandler(
     e: Event,
-    { node, size }: { node: HTMLElement, size: Position },
+    { handle, node, size }: { handle: 's' | 'w' | 'e' | 'n' | 'sw' | 'nw' | 'se' | 'ne', node: HTMLElement, size: Position },
     handlerName: string
   ): void {
     const handler = this.props[handlerName];
@@ -585,28 +599,35 @@ export default class GridItem extends React.Component<Props, State> {
     const { cols, x, y, i, maxH, minH } = this.props;
     let { minW, maxW } = this.props;
 
+    // Hack to detect if the user is dragging the left side of the grid item.
+    const resizingLeft = handle.endsWith('w');
+
     // Get new XY
+    const positionParams = this.getPositionParams();
     let { w, h } = calcWH(
-      this.getPositionParams(),
+      positionParams,
       size.width,
       size.height,
-      x,
+      resizingLeft ? 0 : x,
       y
     );
 
     // minW should be at least 1 (TODO propTypes validation?)
     minW = Math.max(minW, 1);
 
-    // maxW should be at most (cols - x)
-    maxW = Math.min(maxW, cols - x);
+    const distanceToEdge = resizingLeft ? x + w : cols - x;
+    maxW = Math.min(maxW, distanceToEdge);
 
     // Min/max capping
     w = clamp(w, minW, maxW);
     h = clamp(h, minH, maxH);
 
-    this.setState({ resizing: handlerName === "onResizeStop" ? null : size });
+    this.setState({
+      resizingLeft: handlerName === "onResizeStop" ? false : resizingLeft,
+      resizing: handlerName === "onResizeStop" ? null : size,
+    });
 
-    handler.call(this, i, w, h, { e, node, size });
+    handler.call(this, i, w, h, { e, node, size, resizingLeft });
   }
 
   render(): ReactNode {
@@ -621,14 +642,30 @@ export default class GridItem extends React.Component<Props, State> {
       useCSSTransforms
     } = this.props;
 
+    const positionParams = this.getPositionParams();
     const pos = calcGridItemPosition(
-      this.getPositionParams(),
+      positionParams,
       x,
       y,
       w,
       h,
       this.state
     );
+
+    // If we are resizing from the left, we need to shift the temporary position
+    // to the left instead of having it grow to the right which is the default.
+    if (this.state.resizingLeft) {
+      const currentPos = calcGridItemPosition(
+        positionParams,
+        x,
+        y,
+        w,
+        h,
+        {},
+      );
+
+      pos.left = pos.left - (pos.width - currentPos.width);
+    }
     const child = React.Children.only(this.props.children);
 
     // Create the child element. We clone the existing element but modify its className and style.

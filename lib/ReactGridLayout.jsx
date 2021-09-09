@@ -68,6 +68,8 @@ try {
   /* Ignore */
 }
 
+const NO_TRANSITION_STYLE = { transition: 'none' };
+
 /**
  * A reactive, fluid grid layout with draggable, resizable components.
  */
@@ -377,7 +379,7 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     i,
     w,
     h,
-    { e, node }
+    { e, node, resizingLeft }
   ) => {
     const { layout } = this.state;
     const l = getLayoutItem(layout, i);
@@ -385,7 +387,8 @@ export default class ReactGridLayout extends React.Component<Props, State> {
 
     this.setState({
       oldResizeItem: cloneLayoutItem(l),
-      oldLayout: this.state.layout
+      oldLayout: this.state.layout,
+      resizingLeft: resizingLeft,
     });
 
     this.props.onResizeStart(layout, l, l, null, e, node);
@@ -397,42 +400,80 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     h,
     { e, node }
   ) => {
-    const { layout, oldResizeItem } = this.state;
+    const { layout, oldResizeItem, resizingLeft } = this.state;
     const { cols, preventCollision, allowOverlap } = this.props;
 
-    const [newLayout, l] = withLayoutItem(layout, i, l => {
-      // Something like quad tree should be used
-      // to find collisions faster
-      let hasCollisions;
-      if (preventCollision && !allowOverlap) {
-        const collisions = getAllCollisions(layout, { ...l, w, h }).filter(
-          layoutItem => layoutItem.i !== l.i
-        );
-        hasCollisions = collisions.length > 0;
+    let newLayout;
+    let l;
 
-        // If we're colliding, we need adjust the placeholder.
-        if (hasCollisions) {
-          // adjust w && h to maximum allowed space
-          let leastX = Infinity,
-            leastY = Infinity;
-          collisions.forEach(layoutItem => {
-            if (layoutItem.x > l.x) leastX = Math.min(leastX, layoutItem.x);
-            if (layoutItem.y > l.y) leastY = Math.min(leastY, layoutItem.y);
-          });
-
-          if (Number.isFinite(leastX)) l.w = leastX - l.x;
-          if (Number.isFinite(leastY)) l.h = leastY - l.y;
-        }
-      }
-
-      if (!hasCollisions) {
-        // Set new width and height.
+    // Resizing from the left requires a different way of building the new
+    // layout. This is because we kind of need to treat an expansion of the
+    // item *to the left* as a drag event and a resize event at the same time.
+    // Drag events handle collisions to the left properly, but the default
+    // resizing behavior does not (it forces the collision item to go below
+    // the element that was already there, which feels really weird when you are
+    // actively resizing the element that gets pushed down the page).
+    if (resizingLeft) {
+      [newLayout, l] = withLayoutItem(layout, i, l => {
         l.w = w;
         l.h = h;
-      }
+        return l;
+      });
 
-      return l;
-    });
+      // If we are resizing from the left, and we cause a new collision, we want
+      // the element we are resizing to be the primary element in that collision
+      // resolution.
+      const newX = oldResizeItem.x + (oldResizeItem.w - w);
+      newLayout = moveElement(
+        newLayout,
+        l,
+        newX,
+        l.y,
+        true,
+        preventCollision,
+        compactType(this.props),
+        cols,
+        allowOverlap
+      );
+
+      // After we have made space for this element on the page, assign the new
+      // x position.
+      l.x = newX;
+    } else {
+      [newLayout, l] = withLayoutItem(layout, i, l => {
+        // Something like quad tree should be used
+        // to find collisions faster
+        let hasCollisions;
+        if (preventCollision && !allowOverlap) {
+          const collisions = getAllCollisions(layout, { ...l, w, h }).filter(
+            layoutItem => layoutItem.i !== l.i
+          );
+          hasCollisions = collisions.length > 0;
+
+          // If we're colliding, we need adjust the placeholder.
+          if (hasCollisions) {
+            // adjust w && h to maximum allowed space
+            let leastX = Infinity,
+              leastY = Infinity;
+            collisions.forEach(layoutItem => {
+              if (layoutItem.x > l.x) leastX = Math.min(leastX, layoutItem.x);
+              if (layoutItem.y > l.y) leastY = Math.min(leastY, layoutItem.y);
+            });
+
+            if (Number.isFinite(leastX)) l.w = leastX - l.x;
+            if (Number.isFinite(leastY)) l.h = leastY - l.y;
+          }
+        }
+
+        if (!hasCollisions) {
+          // Set new width and height.
+          l.w = w;
+          l.h = h;
+        }
+
+        return l;
+      });
+    }
 
     // Shouldn't ever happen, but typechecking makes it necessary
     if (!l) return;
@@ -503,6 +544,10 @@ export default class ReactGridLayout extends React.Component<Props, State> {
       transformScale
     } = this.props;
 
+    // We need to disable transitions on the placeholder element when we are
+    // resizing from the left side.
+    const style = this.state.resizingLeft ? NO_TRANSITION_STYLE : undefined;
+
     // {...this.state.activeDrag} is pretty slow, actually
     return (
       <GridItem
@@ -523,6 +568,7 @@ export default class ReactGridLayout extends React.Component<Props, State> {
         isBounded={false}
         useCSSTransforms={useCSSTransforms}
         transformScale={transformScale}
+        style={this.state.resizingLeft ? NO_TRANSITION_STYLE : undefined}
       >
         <div />
       </GridItem>
