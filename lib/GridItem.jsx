@@ -44,6 +44,7 @@ type GridItemCallback<Data: GridDragEvent | GridResizeEvent> = (
 
 type State = {
   resizing: ?{ width: number, height: number },
+  resizingLeft: boolean,
   dragging: ?{ top: number, left: number },
   className: string
 };
@@ -207,6 +208,7 @@ export default class GridItem extends React.Component<Props, State> {
 
   state: State = {
     resizing: null,
+    resizingLeft: false,
     dragging: null,
     className: ""
   };

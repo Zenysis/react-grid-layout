@@ -49,6 +49,7 @@ type State = {
   oldResizeItem: ?LayoutItem,
   droppingDOMNode: ?ReactElement<any>,
   droppingPosition?: DroppingPosition,
+  resizingLeft: boolean,
   // Mirrored props
   children: ReactChildrenArray<ReactElement<any>>,
   compactType?: CompactType,
@@ -135,6 +136,7 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     oldLayout: null,
     oldResizeItem: null,
     droppingDOMNode: null,
+    resizingLeft: false,
     children: []
   };
 
@@ -568,7 +570,7 @@ export default class ReactGridLayout extends React.Component<Props, State> {
         isBounded={false}
         useCSSTransforms={useCSSTransforms}
         transformScale={transformScale}
-        style={this.state.resizingLeft ? NO_TRANSITION_STYLE : undefined}
+        style={style}
       >
         <div />
       </GridItem>
