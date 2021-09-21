@@ -330,27 +330,28 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     y,
     { e, node }
   ) => {
-    if (!this.state.activeDrag) return;
+    const { activeDrag, oldDragItem } = this.state;
+    if (!activeDrag && !oldDragItem) return;
 
-    const { oldDragItem } = this.state;
     let { layout } = this.state;
     const { cols, preventCollision, allowOverlap } = this.props;
     const l = getLayoutItem(layout, i);
-    if (!l) return;
 
     // Move the element here
     const isUserAction = true;
-    layout = moveElement(
-      layout,
-      l,
-      x,
-      y,
-      isUserAction,
-      preventCollision,
-      compactType(this.props),
-      cols,
-      allowOverlap
-    );
+    if (l) {
+      layout = moveElement(
+        layout,
+        l,
+        x,
+        y,
+        isUserAction,
+        preventCollision,
+        compactType(this.props),
+        cols,
+        allowOverlap
+      );
+    }
 
     this.props.onDragStop(layout, oldDragItem, l, null, e, node);
 
